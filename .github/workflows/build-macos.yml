@@ -1,0 +1,65 @@
+name: Build macOS
+
+# Runs in this PUBLIC repo (free unlimited macOS runner minutes). It pulls the
+# app source from the private InterimateV2 repo, builds the macOS app on a Mac,
+# and publishes the .dmg as a Release here.
+#
+# Setup (one time):
+#   - Add a secret RELEASES_TOKEN in THIS repo's Settings → Secrets → Actions.
+#     The token needs READ access to the private source repo InterimateV2
+#     (a classic PAT with the "repo" scope, or a fine-grained token with
+#     InterimateV2 → Contents: Read).
+# Then: Actions → "Build macOS" → Run workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish to'
+        required: false
+        default: 'macos'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout app source (private InterimateV2)
+        uses: actions/checkout@v4
+        with:
+          repository: SHAIK-ABDUL-KHADEER/InterimateV2
+          ref: main
+          token: ${{ secrets.RELEASES_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build macOS app (universal .dmg + .zip)
+        run: npx electron-builder --mac --universal --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false # unsigned (no Apple Developer cert)
+
+      - name: List build output
+        run: ls -lh release || true
+
+      - name: Publish to this repo's Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || 'macos' }}
+          name: Interimate for macOS
+          body: |
+            Interimate desktop app for macOS (universal — Intel & Apple Silicon).
+
+            **Not notarized** (no Apple Developer account): the first time, right-click
+            the app → **Open** → **Open**, or allow it under
+            **System Settings → Privacy & Security**.
+          files: |
+            release/Interimate-mac.dmg
+            release/Interimate-mac*.zip
+          fail_on_unmatched_files: false
